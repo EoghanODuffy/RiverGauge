@@ -11,7 +11,7 @@ SoftwareSerial SIM800L(13, 15); //SIM800LL Tx & Rx is connected to Arduino #3 & 
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
 int sleepTime = 900E6;                //time in seconds*E6 between updates 
-int resetSleepTime = 60E6;            //time in seconds*E6 after an upload failure (prevents significant battery drain)
+int resetSleepTime = 300E6;            //time in seconds*E6 after an upload failure (prevents significant battery drain)
 const String APN  = "simbase";        //sim APN
 String apiKey = "HAJQOQIJ6SIAXCU5";   //thingspeak api key
 String levelField = "field1";
@@ -57,8 +57,6 @@ void setup()
   digitalWrite(LED_BUILTIN, LOW);
   checkBattery();
   digitalWrite(LED_BUILTIN, HIGH);
-  delay(1000);
-  digitalWrite(LED_BUILTIN, LOW);
   waitForConnection();
   
   uploadData(waterlevel, modulebattery);
@@ -79,17 +77,17 @@ void loop()
 
 void checkBattery(){
   Serial.println("Send ->: AT+CBC");
-  while (SIM800L.available()){
+  while (SIM800L.available()){        //clear anything in serial buffer
     SIM800L.read();
   }
 
-  int timeout = 0;
+  int timeout = 0;                    //initilize timeout counter
   
   SIM800L.println("AT+CBC");
-  while(SIM800L.available()<30){ //wait for 30 characters to come in before moving on or else restart everything
+  while(SIM800L.available()<30){      //wait for 30 characters to come in before moving on or else restart everything
     Serial.print(".");
     timeout = timeout + 1;
-    if(timeout>=100){
+    if(timeout>=200){                 //Timeout if response takes longer than 40 seconds
       Serial.println();
       Serial.println("Timeout, Sleeping for 5 mins to reset");
       goToSleep();
@@ -103,10 +101,10 @@ void checkBattery(){
   char C1;
   char C2;
   char C3;
-  while(SIM800L.available())
+  while(SIM800L.available())          //read response
   {
-    byteRead = SIM800L.read();
-    if(byteRead == delim){
+    byteRead = SIM800L.read();        //read data
+    if(byteRead == delim){            //if battery data string comes through then set C1,C2,C3 to corrisponding chars
       C1=SIM800L.read();
       if(C1 != delim){
         C2=SIM800L.read();
@@ -118,11 +116,11 @@ void checkBattery(){
     }
 
   }
-  Serial.println(C1);
+  Serial.println(C1);     //reports wrong values unles these are printed. I dont know why
   Serial.println(C2);
   Serial.println(C3);
   
-  if(C1==','){
+  if(C1==','){                    //convert individual chars to int
     modulebattery = 0;
   }else if(C2==','){
     modulebattery = C1-'0';
@@ -136,7 +134,9 @@ void checkBattery(){
 }
 
 //#####################################################################################
-
+//This waits for a connection to be established before sending data
+//In most cases this takes under 10 seconds but can take longer in remote areas
+//
 void waitForConnection(){
   Serial.println("Checking for Connection");
   Serial.println("Send ->: AT+CREG?");
@@ -150,10 +150,10 @@ void waitForConnection(){
     int timeout = 0;
   
     SIM800L.println("AT+CREG?");
-    while(SIM800L.available()<5){ //wait for 30 characters to come in before moving on or else restart everything
+    while(SIM800L.available()<5){               //wait for 30 characters to come in before moving on or else restart everything
       Serial.print(".");
       timeout = timeout + 1;
-      if(timeout>=100){
+      if(timeout>=200){                         //if taking too long to respond, timeout. Set at 40 seconds
         Serial.println();
         Serial.println("Timeout, Sleeping for 5 mins to reset");
         goToSleep();
@@ -214,10 +214,12 @@ void uploadData(int level, int battery){
   sendSerial("AT+SAPBR=3,1,Contype,\"GPRS\"");  //set gprs
   sendSerial("AT+SAPBR=3,1,APN,\"simbase\"");   //set apn
   sendSerial("AT+SAPBR=1,1");                   //enable gprs
-  sendSerial("AT+HTTPINIT");                //enable http mode
+  sendSerial("AT+HTTPINIT");                    //enable http mode
+  digitalWrite(LED_BUILTIN, LOW);               //turn on led REMOVE THIS FOR DEPLOYMENT
   sendSerial("AT+HTTPPARA=CID,\"1\"");          //set http bearer profile
   sendSerial("AT+HTTPPARA=URL,\""+url+"\"");    //set url
   sendSerial("AT+HTTPACTION=0");                //start gttp get
+  digitalWrite(LED_BUILTIN, HIGH);              //turn off led REMOVE THIS FOR DEPLOYMENT
   sendSerial("AT+HTTPTERM");                    //terminate sesion
   sendSerial("AT+SAPBR=0,1");                   //disable gprs
 }
@@ -235,8 +237,8 @@ void sendSerial(String command)
     Serial.print(".");
     delay(200);
 
-    timeout = timeout + 1;
-    if(timeout>=240){
+    timeout = timeout + 1;          
+    if(timeout>=200){               //If sim800l is taking too long to reply. Reset everything and start over
       Serial.println();
       Serial.println("Timeout, Sleeping for 5 mins to reset");
       goToSleep();
