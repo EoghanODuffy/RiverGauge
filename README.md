@@ -1,5 +1,7 @@
 # Wireless River Gauge
-This is a project for creating a module that can measure the height of a river to give up-to-date information to kayakers. Its still a work in progress but I hope to get some up and running in the next few months.
+This is a project for creating a module that can measure the height of a river to give up-to-date information to kayakers. It uses an ultrasonic sensor to measure the river level and the cellular network to send that data. It's still a work in progress but I hope to get some up and running in the next few months.
+![module diagram](https://github.com/EoghanODuffy/RiverGauge/assets/23324208/308d94bc-e2ce-465f-a9d6-9bfd3693b4f5)
+
 
 ## Goals
 - Low cost to allow for these to be deployed in as many places as possible. Ideally under €50.
@@ -13,7 +15,7 @@ This is a project for creating a module that can measure the height of a river t
 
 ## Discription 
 
-The module is controlled using a D1 mini ESP8266. (A clone to save costs) This module is super compact and has really good deep sleep capabilities. It also operates on 3.3V which is great when using 3.7v li-ion batteries.
+The module is controlled using a D1 mini ESP8266. (A clone since they're easier to find) This module is super compact and has really good deep sleep capabilities. It also operates on 3.3V which is great when using 3.7v li-ion batteries.
 
 For the sensor, I'm currently using an aj-sr04m ultrasonic sensor. These are great for the project as they are water-resistant and cost less than €5 when sourced from China. They have the ability to run in a low-current sleep mode and have an identical operation to the popular HC-SR04 sensors. They have a range of between 20cm and 600cm which covers basically all Irish rivers.
 
@@ -27,6 +29,9 @@ The module will be installed in a water-resistant 115x90x50mm case. This should 
 
 ### Sim Card
 There are a good few options out there for IoT SIM cards. I'm using Simbase for mine. The card costs €5 to buy and it costs about €4 per year to operate. 1NCE also produce an affordable SIM with a €12 once-off cost to run it or about 10 years.
+
+### Data Storage
+Currently, I'm using ThingSpeak to upload and store data from the sensor. It's very simple to work with and has a good API. However, it is not very scalable. The free account is limited to only 4 devices and a paid account costing €100 for 10 devices. I plan to eventually upgrade it to an MQTT system. AWS looks to have the most reasonable hosting costs for the data use required.
 
 ## Assembly
 ### Electronics
