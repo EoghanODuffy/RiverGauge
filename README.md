@@ -34,6 +34,9 @@ Gerber files for the PCB are in the project files. I ordered mine through JLCPCB
 
 The module can also be assembled using perf board or individual wires if you have the patience for it. The schematic is included in the project files. 
 
+![assemled pcb](https://github.com/EoghanODuffy/RiverGauge/assets/23324208/c59263bf-6416-4991-8ed2-389a28a85c34)
+
+
 ### Programming
 The code is uploaded to the ESP using the Arduino IDE. It needs to be set up to work with ESP8266 modules. There's plenty of tutorials for this online. Before connecting any USB to the ESP module remove it from the PCB or remove the battery. (I've fried 3 boards making this project by forgetting to do this) 
 
