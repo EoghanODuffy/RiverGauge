@@ -13,25 +13,24 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 int sleepTime = 900E6;                //time in seconds*E6 between updates 
 int resetSleepTime = 300E6;            //time in seconds*E6 after an upload failure (prevents significant battery drain)
 const String APN  = "simbase";        //sim APN
-String apiKey = "HAJQOQIJ6SIAXCU5";   //thingspeak api key
-String levelField = "field1";
-String batteryField = "field2";
 
+int gaugeid = 1;                      //ID for gauge upload
 
 int modulebattery;                    //battery level to send
 int waterlevel;                       //water level to send
 int tSuccess = 0;                     //changes to zero on successful data transmission to thingspeak
-int dtrPin = 2;
+int tFailures = 0;                    //If failed to talk to sim for 5 attempts hard reset everything for a while
+int pwrPin = 2;
 int resetPin = 4;
 
 
 void setup()
 {
   pinMode(LED_BUILTIN, OUTPUT);       //led indicator light, low is on
-  pinMode(dtrPin,OUTPUT);                  //dtr pin
+  pinMode(pwrPin,OUTPUT);                  //dtr pin
   pinMode(resetPin,OUTPUT);      
   digitalWrite(resetPin,HIGH);
-  digitalWrite(dtrPin,HIGH);
+  digitalWrite(pwrPin,HIGH);
   
   //Begin serial communication with Arduino and Arduino IDE (Serial Monitor)
   Serial.begin(9600);
@@ -40,7 +39,6 @@ void setup()
 
   Serial.println("Initializing...");
 
-  digitalWrite(dtrPin,LOW);      //dtr pin low
   delay(100);
   sendSerial("AT+CSCLK=0"); //wake up
   sendSerial("AT+CFUN=1");  //enable full functionality
@@ -59,7 +57,7 @@ void setup()
   digitalWrite(LED_BUILTIN, HIGH);
   waitForConnection();
   
-  uploadData(waterlevel, modulebattery);
+  uploadData(gaugeid, waterlevel, modulebattery);
 
   goToSleep();  
 }
@@ -144,10 +142,12 @@ void waitForConnection(){
     SIM800L.read();
   }
   int simConnected =0;
+  int attempts = 0;
 
   while(simConnected == 0){
     Serial.println("Checking");
     int timeout = 0;
+    attempts = attempts + 1;
   
     SIM800L.println("AT+CREG?");
     while(SIM800L.available()<5){               //wait for 30 characters to come in before moving on or else restart everything
@@ -171,6 +171,9 @@ void waitForConnection(){
         simConnected = 1;
       }
     }
+    if (attempts>15){
+      goToSleep();
+    }
     delay(2000);
   }
   Serial.println("Connection Successful");
@@ -180,6 +183,14 @@ void waitForConnection(){
 
 void goToSleep(){
   Serial.println("#########################################################################");
+  if(modulebattery<30){
+    sleepTime=1800E6;
+  }else if(modulebattery<15){
+    sleepTime=3600E6;
+  }else if(modulebattery<5){
+    sleepTime=7200E6;
+  }
+
   
   if(tSuccess==0){
     Serial.println("ERROR UPLOADING, Resetting sim card");
@@ -195,19 +206,25 @@ void goToSleep(){
 
   
   Serial.println("Going into Sleep");
+  //sendSerial("AT+CPOWD=1");
+  if (tFailures > 4){
+    Serial.println("Sim800l not responding. Attempting hard shutdown");
+    digitalWrite(pwrPin,LOW);
+    ESP.deepSleep(resetSleepTime);
+    
+  }
   sendSerial("AT+CFUN=0");  //Need to send twice "+CPIN: NOT READY"
   sendSerial("AT+CFUN=0");
-  digitalWrite(dtrPin,HIGH);
-  sendSerial("AT+CSCLK=1");
-  delay(1000);
-  digitalWrite(LED_BUILTIN, HIGH);
+  sendSerial("AT+CSCLK=2");
+  digitalWrite(pwrPin,LOW);
   ESP.deepSleep(sleepTime);
 }
 
 //#####################################################################################
 
-void uploadData(int level, int battery){
-  String url = "http://api.thingspeak.com/update?api_key="+apiKey+"&"+levelField+"="+level+"&"+batteryField+"="+battery;
+void uploadData(int gauge, int level, int battery){
+  //String url = "http://api.thingspeak.com/update?api_key="+apiKey+"&"+levelField+"="+level+"&"+batteryField+"="+battery;
+  String url = "http://rivergauge.net/gaugeupload.php?gauge="+String(gauge)+"&level="+String(level)+"&battery="+String(battery);
   Serial.println(url);
  
   sendSerial("AT+CGATT=1");                     //attach to gprs service
@@ -215,11 +232,9 @@ void uploadData(int level, int battery){
   sendSerial("AT+SAPBR=3,1,APN,\"simbase\"");   //set apn
   sendSerial("AT+SAPBR=1,1");                   //enable gprs
   sendSerial("AT+HTTPINIT");                    //enable http mode
-  digitalWrite(LED_BUILTIN, LOW);               //turn on led REMOVE THIS FOR DEPLOYMENT
   sendSerial("AT+HTTPPARA=CID,\"1\"");          //set http bearer profile
   sendSerial("AT+HTTPPARA=URL,\""+url+"\"");    //set url
   sendSerial("AT+HTTPACTION=0");                //start gttp get
-  digitalWrite(LED_BUILTIN, HIGH);              //turn off led REMOVE THIS FOR DEPLOYMENT
   sendSerial("AT+HTTPTERM");                    //terminate sesion
   sendSerial("AT+SAPBR=0,1");                   //disable gprs
 }
@@ -231,6 +246,7 @@ void sendSerial(String command)
   int timeout = 0;
   char byteRead;
   Serial.println("Send ->: " + command);
+  digitalWrite(LED_BUILTIN, LOW); 
   SIM800L.println(command);
   
   while(SIM800L.available()<2){    //think this might slow things down for everything to send through fully
@@ -241,11 +257,12 @@ void sendSerial(String command)
     if(timeout>=200){               //If sim800l is taking too long to reply. Reset everything and start over
       Serial.println();
       Serial.println("Timeout, Sleeping for 5 mins to reset");
+      tFailures = tFailures + 1;
       goToSleep();
     }
   }
 
-  
+  digitalWrite(LED_BUILTIN, HIGH);
   long wtimer = millis();
   while (wtimer + 3000 > millis()) {        //min 3 seconds for reading, not sure why this is neccessary but i cant get it working without it
     while (SIM800L.available()) {
