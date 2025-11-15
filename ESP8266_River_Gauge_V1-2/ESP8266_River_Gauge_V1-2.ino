@@ -156,7 +156,7 @@ void checkBattery(){                  //This could definetly be made prettier bu
     }
 
   }
-  Serial.println(C1);     //reports wrong values unles these are printed. I dont know why
+  Serial.println(C1);     //reports wrong values unless these are printed. I dont know why. Please dont delete
   Serial.println(C2);
   Serial.println(C3);
   
@@ -339,3 +339,4 @@ void sendSerial(String command, String response, int maxAttempts)
     }
   }
 }
+
