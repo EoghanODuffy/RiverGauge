@@ -14,8 +14,8 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, SENSOR_HEIGHT);     //Trigger pin, echopin,
 //CONFIG DATA
 int sleepTime=900E6;                   //Default sleep time with good battery connection
 int resetSleepTime = 300E6;            //time in seconds*E6 after an upload failure (prevents significant battery drain)
-const String APN  = "simbase";        //sim APN
-const String Pass = "xvB6JBdrqTFALLnktLXk"; //Password for upload server
+const String APN  = "SIMAPN";        //sim APN
+const String Pass = "WEBSERVERPASSWORD"; //Password for upload server
 int gaugeid = 1;                      //ID for gauge upload
 
 
