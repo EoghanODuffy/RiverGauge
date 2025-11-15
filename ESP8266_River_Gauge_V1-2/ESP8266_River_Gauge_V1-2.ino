@@ -3,28 +3,29 @@
 
 #define TRIGGER_PIN  14               // Arduino pin tied to trigger pin on the ultrasonic sensor.
 #define ECHO_PIN     12               // Arduino pin tied to echo pin on the ultrasonic sensor.
-#define MAX_DISTANCE 600              // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 #define SENSOR_HEIGHT 400             // Hight of the sensor above the river bed
+#define NUM_SAMPLES 15                // Number of samples to take
 
 //Create software serial object to communicate with SIM800L
 SoftwareSerial SIM800L(13, 15); //SIM800LL Tx & Rx is connected to Arduino #3 & #2
-NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, SENSOR_HEIGHT);     //Trigger pin, echopin, max distance - set to sensor height so no negative values are returned
 
 
 //CONFIG DATA
-int sleepTime=900E6;                   //This gets overwritten right now by gotosleep function
+int sleepTime=900E6;                   //Default sleep time with good battery connection
 int resetSleepTime = 300E6;            //time in seconds*E6 after an upload failure (prevents significant battery drain)
-const String APN  = "simbase";        //sim APN this isnt used yet
+const String APN  = "simbase";        //sim APN
+const String Pass = "xvB6JBdrqTFALLnktLXk"; //Password for upload server
 int gaugeid = 1;                      //ID for gauge upload
 
 
 //SET UP VARIABLES
 int modulebattery;                    //battery level to send
 int waterlevel;                       //water level to send
-int tSuccess = 0;                     //changes to zero on successful data transmission to thingspeak
-bool SAPFail = false;                 //Check for gprs setup failue
+int tSuccess = 0;                     //changes to 1 on successful data transmission to web server
 int pwrPin = 5;                       //connected to sim power mosfet. High is on
 int resetPin = 4;                     //Reset pin. Bring to gnd to reset
+int readings[NUM_SAMPLES];            //Sensor readings
 
 
 void setup()
@@ -45,9 +46,12 @@ void setup()
   Serial.println("Waiting for sim and sensor ready");
   delay(1500);
   Serial.println("Reading Gauge Data");
+  Serial.print("Sensor Height: ");
+  Serial.println(SENSOR_HEIGHT);
   Serial.print("Reading(");
   
   //Measure data from sensor and get average
+  /*
   for(int i=0;i<10;i++){
     waterlevel=waterlevel+(SENSOR_HEIGHT-(sonar.ping_cm()));
     Serial.print("#");
@@ -57,20 +61,45 @@ void setup()
   waterlevel = waterlevel/10;
   Serial.print("Water Level = ");
   Serial.println(waterlevel);
+  */
+  //Measure Sensor and get median
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    readings[i] = SENSOR_HEIGHT - sonar.ping_cm();
+    Serial.print("#");
+    delay(300);
+  }
+  Serial.println(")");
 
+  //Sort the readings gotten
+  for (int i = 0; i < NUM_SAMPLES - 1; i++) {
+    for (int j = i + 1; j < NUM_SAMPLES; j++) {
+      if (readings[j] < readings[i]) {
+        int temp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = temp;
+      }
+    }
+  }
+  //Calculate median
+  if (NUM_SAMPLES % 2 == 0) {
+    // Even number of samples → average of two middle values
+    waterlevel = (readings[NUM_SAMPLES/2 - 1] + readings[NUM_SAMPLES/2]) / 2;
+  } else {
+    // Odd number of samples → middle value
+    waterlevel = readings[NUM_SAMPLES/2];
+  }
+  Serial.print("Water Level = ");
+  Serial.println(waterlevel);
+
+
+
+  
   sendSerial("AT","OK", 10);  //quick comms check
-  
-
-  //Testing these in case it helps
-  
   digitalWrite(LED_BUILTIN, LOW);
-  
   checkBattery();
   digitalWrite(LED_BUILTIN, HIGH);
   waitForConnection();
-  
   uploadData(gaugeid, waterlevel, modulebattery);
-
   goToSleep();  
 }
 
@@ -201,34 +230,31 @@ void waitForConnection(){
 //######################################################################################
 
 void goToSleep(){
+  int newTime = sleepTime;
   Serial.println("#########################################################################");
   SIM800L.println("AT+CPOWD=1");
   delay(100);
   
   if(tSuccess==0){
     Serial.println("ERROR UPLOADING, Resetting sim card");
-    sleepTime=resetSleepTime;
+    newTime=resetSleepTime;
   }else{
     Serial.print("SUCCESSFUL TRANSMISSION, Sleeping for ");   //Choose a sleep time depending on battery level
-    if(modulebattery<35){
-      sleepTime=1800E6;
-      Serial.println("30 mins");
+    if(modulebattery<15){
+      newTime=sleepTime * 8;
     }else if(modulebattery<25){
-      sleepTime=3600E6;
-      Serial.println("60 mins");
-    }else if(modulebattery<15){
-      sleepTime=7200E6;
-      Serial.println("120 mins");
+      newTime=sleepTime * 4;
+    }else if(modulebattery<35){
+      newTime=sleepTime * 2;
     }else{
-      sleepTime=900E6;
-      Serial.println("15 mins");
+      newTime=sleepTime;
     }
+    Serial.println(newTime);
   }
-
   
   Serial.println("Going into Sleep");
   digitalWrite(pwrPin,LOW);
-  ESP.deepSleep(sleepTime);
+  ESP.deepSleep(newTime);
 }
 
 
@@ -236,31 +262,15 @@ void goToSleep(){
 //#####################################################################################
 
 void uploadData(int gauge, int level, int battery){
-  String url = "http://rivergauge.net/upload.php?id="+String(gauge)+"&l="+String(level)+"&b="+String(battery)+"&pw=";     //Compose link to send
+  String url = "http://rivergauge.net/upload.php?id="+String(gauge)+"&l="+String(level)+"&b="+String(battery)+"&pw="+Pass;     //Compose link to send
   Serial.println(url);
   sendSerial("AT+CPIN?","OK", 10);
   sendSerial("AT+CSQ","OK", 10);
   sendSerial("AT+CGATT=1","OK", 10);
   sendSerial("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"","OK", 10);  //set gprs
-  sendSerial("AT+SAPBR=3,1,\"APN\",\"simbase\"","OK", 10);   //set apn
+  sendSerial("AT+SAPBR=3,1,\"APN\",\""+APN+"\"","OK", 10);   //set apn
   sendSerial("AT+SAPBR=1,1","OK", 10);
   sendSerial("AT+SAPBR=2,1","OK", 10);
-  
-  /*sendSerial("AT+SAPBR=1,1", "OK", 100);
-  if(SAPFail == true){
-    SAPFail == false;
-    sendSerial("AT+SAPBR=0,1","OK", 10);                //close bearer
-    delay(3000);
-    sendSerial("AT+SAPBR=1,1","OK", 20);                //reopen bearer
-  }
-  */
-  /*This one is causing the crashes
-   * Try AT+SAPBR=1,2
-   * or
-   * If error close bearer then open again
-   * AT+SAPBR=0,1
-   * AT+SAPBR=1,1
-   */
   sendSerial("AT+HTTPINIT","OK", 10);                    //enable http mode
   sendSerial("AT+HTTPPARA=\"CID\",1","OK", 10);          //set http bearer profile
   sendSerial("AT+HTTPPARA=\"UA\",\"SIM800\"","OK", 10);
@@ -312,12 +322,8 @@ void sendSerial(String command, String response, int maxAttempts)
         if(response == "200"){
           tSuccess=1;
         }
-    }else if(SerialResponse.indexOf("ERROR") >= 0){
+    }else if(SerialResponse.indexOf("ERROR") >= 0){ //is error found in the string returned
       Serial.println("SIM ERROR, Continuing Anyway");
-      /*if(command == "AT+SAPBR=1,1"){
-        Serial.println("Attempting to reopen bearer profile");
-        SAPFail = true;*/
-      }
       ResponseFound = true;
     }else if(SerialResponse.indexOf("601") >= 0){
       Serial.println("Transmit Error, Resetting");
